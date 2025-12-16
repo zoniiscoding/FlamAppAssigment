@@ -1,1 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Interactive Bézier Rope</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0e0e11;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<script>
+/* ==========================
+   Canvas Setup
+========================== */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* ==========================
+   Vector Utilities
+========================== */
+function vec(x, y) {
+  return { x, y };
+}
+
+function add(a, b) {
+  return vec(a.x + b.x, a.y + b.y);
+}
+
+function sub(a, b) {
+  return vec(a.x - b.x, a.y - b.y);
+}
+
+function mul(v, s) {
+  return vec(v.x * s, v.y * s);
+}
+
+function length(v) {
+  return Math.hypot(v.x, v.y);
+}
+
+function normalize(v) {
+  const len = length(v) || 1;
+  return vec(v.x / len, v.y / len);
+}
+
+/* ==========================
+   Spring Point Class
+========================== */
+class SpringPoint {
+  constructor(position) {
+    this.position = { ...position };
+    this.velocity = vec(0, 0);
+    this.target = { ...position };
+  }
+
+  update(k, damping) {
+    const force = sub(this.target, this.position);
+    const acceleration = sub(mul(force, k), mul(this.velocity, damping));
+    this.velocity = add(this.velocity, acceleration);
+    this.position = add(this.position, this.velocity);
+  }
+}
+
+/* ==========================
+   Control Points
+========================== */
+const P0 = vec(150, canvas.height / 2);
+const P3 = vec(canvas.width - 150, canvas.height / 2);
+
+const P1 = new SpringPoint(vec(300, canvas.height / 2 - 150));
+const P2 = new SpringPoint(vec(canvas.width - 300, canvas.height / 2 + 150));
+
+/* ==========================
+   Mouse Input
+========================== */
+const mouse = vec(canvas.width / 2, canvas.height / 2);
+
+canvas.addEventListener("mousemove", e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+/* ==========================
+   Bézier Math
+========================== */
+function bezierPoint(t, P0, P1, P2, P3) {
+  const u = 1 - t;
+  return add(
+    add(
+      add(
+        mul(P0, u * u * u),
+        mul(P1, 3 * u * u * t)
+      ),
+      mul(P2, 3 * u * t * t)
+    ),
+    mul(P3, t * t * t)
+  );
+}
+
+function bezierTangent(t, P0, P1, P2, P3) {
+  const u = 1 - t;
+  return add(
+    add(
+      mul(sub(P1, P0), 3 * u * u),
+      mul(sub(P2, P1), 6 * u * t)
+    ),
+    mul(sub(P3, P2), 3 * t * t)
+  );
+}
+
+/* ==========================
+   Rendering
+========================== */
+function drawPoint(p, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw Bézier curve
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  for (let t = 0; t <= 1; t += 0.01) {
+    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
+    if (t === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+
+  // Draw tangents
+  ctx.strokeStyle = "#00ffcc";
+  for (let t = 0; t <= 1; t += 0.1) {
+    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
+    const tan = normalize(
+      bezierTangent(t, P0, P1.position, P2.position, P3)
+    );
+    const end = add(p, mul(tan, 30));
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+  }
+
+  // Draw control points
+  drawPoint(P0, "#ff5555");
+  drawPoint(P3, "#ff5555");
+  drawPoint(P1.position, "#ffaa00");
+  drawPoint(P2.position, "#ffaa00");
+}
+
+/* ==========================
+   Animation Loop
+========================== */
+function update() {
+  // Map mouse to targets
+  P1.target = add(P0, mul(sub(mouse, P0), 0.4));
+  P2.target = add(P3, mul(sub(mouse, P3), 0.4));
+
+  // Spring physics
+  P1.update(0.08, 0.15);
+  P2.update(0.08, 0.15);
+
+  draw();
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
 
