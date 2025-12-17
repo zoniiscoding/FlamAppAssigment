@@ -1,194 +1,171 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Interactive Bézier Rope</title>
-  <style>
-    body {
-      margin: 0;
-      background: #0e0e11;
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-    }
-  </style>
+<meta charset="UTF-8" />
+<title>Interactive Bézier Rope</title>
+<style>
+  body {
+    margin: 0;
+    background: #0e0e0e;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+  }
+</style>
 </head>
 <body>
+
 <canvas id="canvas"></canvas>
 
 <script>
-/* ==========================
-   Canvas Setup
-========================== */
+/* ===================== CANVAS ===================== */
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-window.addEventListener("resize", resize);
-resize();
-
-/* ==========================
-   Vector Utilities
-========================== */
-function vec(x, y) {
-  return { x, y };
-}
-
-function add(a, b) {
-  return vec(a.x + b.x, a.y + b.y);
-}
-
-function sub(a, b) {
-  return vec(a.x - b.x, a.y - b.y);
-}
-
-function mul(v, s) {
-  return vec(v.x * s, v.y * s);
-}
-
-function length(v) {
-  return Math.hypot(v.x, v.y);
-}
-
-function normalize(v) {
-  const len = length(v) || 1;
-  return vec(v.x / len, v.y / len);
-}
-
-/* ==========================
-   Spring Point Class
-========================== */
-class SpringPoint {
-  constructor(position) {
-    this.position = { ...position };
-    this.velocity = vec(0, 0);
-    this.target = { ...position };
+/* ===================== VECTOR ===================== */
+class Vec2 {
+  constructor(x = 0, y = 0) {
+    this.x = x;
+    this.y = y;
   }
-
-  update(k, damping) {
-    const force = sub(this.target, this.position);
-    const acceleration = sub(mul(force, k), mul(this.velocity, damping));
-    this.velocity = add(this.velocity, acceleration);
-    this.position = add(this.position, this.velocity);
+  add(v) { return new Vec2(this.x + v.x, this.y + v.y); }
+  sub(v) { return new Vec2(this.x - v.x, this.y - v.y); }
+  mul(s) { return new Vec2(this.x * s, this.y * s); }
+  len() { return Math.hypot(this.x, this.y); }
+  norm() {
+    const l = this.len() || 1;
+    return new Vec2(this.x / l, this.y / l);
   }
 }
 
-/* ==========================
-   Control Points
-========================== */
-const P0 = vec(150, canvas.height / 2);
-const P3 = vec(canvas.width - 150, canvas.height / 2);
-
-const P1 = new SpringPoint(vec(300, canvas.height / 2 - 150));
-const P2 = new SpringPoint(vec(canvas.width - 300, canvas.height / 2 + 150));
-
-/* ==========================
-   Mouse Input
-========================== */
-const mouse = vec(canvas.width / 2, canvas.height / 2);
-
-canvas.addEventListener("mousemove", e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-});
-
-/* ==========================
-   Bézier Math
-========================== */
+/* ===================== BEZIER ===================== */
 function bezierPoint(t, P0, P1, P2, P3) {
   const u = 1 - t;
-  return add(
-    add(
-      add(
-        mul(P0, u * u * u),
-        mul(P1, 3 * u * u * t)
-      ),
-      mul(P2, 3 * u * t * t)
-    ),
-    mul(P3, t * t * t)
-  );
+  return P0.mul(u * u * u)
+    .add(P1.mul(3 * u * u * t))
+    .add(P2.mul(3 * u * t * t))
+    .add(P3.mul(t * t * t));
 }
 
 function bezierTangent(t, P0, P1, P2, P3) {
   const u = 1 - t;
-  return add(
-    add(
-      mul(sub(P1, P0), 3 * u * u),
-      mul(sub(P2, P1), 6 * u * t)
-    ),
-    mul(sub(P3, P2), 3 * t * t)
-  );
+  return P1.sub(P0).mul(3 * u * u)
+    .add(P2.sub(P1).mul(6 * u * t))
+    .add(P3.sub(P2).mul(3 * t * t));
 }
 
-/* ==========================
-   Rendering
-========================== */
-function drawPoint(p, color) {
-  ctx.fillStyle = color;
+/* ===================== SPRING ===================== */
+class SpringPoint {
+  constructor(pos) {
+    this.pos = pos;
+    this.vel = new Vec2();
+    this.target = pos;
+  }
+  update(dt) {
+    const k = 30;
+    const damping = 7;
+    const acc = this.pos.sub(this.target).mul(-k).sub(this.vel.mul(damping));
+    this.vel = this.vel.add(acc.mul(dt));
+    this.pos = this.pos.add(this.vel.mul(dt));
+  }
+}
+
+/* ===================== CONTROL POINTS ===================== */
+let P0, P3;
+let P1, P2;
+
+/* ===================== RESIZE FIX ===================== */
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  // Fixed endpoints (ALWAYS updated)
+  if (!P0) {
+    P0 = new Vec2(100, canvas.height / 2);
+    P3 = new Vec2(canvas.width - 100, canvas.height / 2);
+
+    P1 = new SpringPoint(new Vec2(canvas.width * 0.3, canvas.height * 0.4));
+    P2 = new SpringPoint(new Vec2(canvas.width * 0.7, canvas.height * 0.6));
+  } else {
+    P0.x = 100;
+    P0.y = canvas.height / 2;
+
+    P3.x = canvas.width - 100;
+    P3.y = canvas.height / 2;
+  }
+}
+
+window.addEventListener("resize", resize);
+resize();
+
+/* ===================== INPUT ===================== */
+canvas.addEventListener("mousemove", e => {
+  P1.target = new Vec2(e.clientX, e.clientY);
+  P2.target = new Vec2(
+    canvas.width - e.clientX,
+    canvas.height - e.clientY
+  );
+});
+
+/* ===================== DRAW ===================== */
+function drawPoint(p, r, c) {
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = c;
   ctx.fill();
 }
 
-function draw() {
+function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw Bézier curve
+  /* Curve */
+  ctx.beginPath();
+  for (let t = 0; t <= 1; t += 0.01) {
+    const p = bezierPoint(t, P0, P1.pos, P2.pos, P3);
+    t === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+  }
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2;
-  ctx.beginPath();
-
-  for (let t = 0; t <= 1; t += 0.01) {
-    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
-    if (t === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  }
   ctx.stroke();
 
-  // Draw tangents
-  ctx.strokeStyle = "#00ffcc";
+  /* Tangents */
   for (let t = 0; t <= 1; t += 0.1) {
-    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
-    const tan = normalize(
-      bezierTangent(t, P0, P1.position, P2.position, P3)
-    );
-    const end = add(p, mul(tan, 30));
+    const p = bezierPoint(t, P0, P1.pos, P2.pos, P3);
+    const tan = bezierTangent(t, P0, P1.pos, P2.pos, P3)
+      .norm()
+      .mul(30);
 
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
-    ctx.lineTo(end.x, end.y);
+    ctx.lineTo(p.x + tan.x, p.y + tan.y);
+    ctx.strokeStyle = "#00ffcc";
     ctx.stroke();
   }
 
-  // Draw control points
-  drawPoint(P0, "#ff5555");
-  drawPoint(P3, "#ff5555");
-  drawPoint(P1.position, "#ffaa00");
-  drawPoint(P2.position, "#ffaa00");
+  /* Control points */
+  drawPoint(P0, 6, "#ff5555");
+  drawPoint(P3, 6, "#ff5555");
+  drawPoint(P1.pos, 6, "#55ff55");
+  drawPoint(P2.pos, 6, "#55ff55");
 }
 
-/* ==========================
-   Animation Loop
-========================== */
-function update() {
-  // Map mouse to targets
-  P1.target = add(P0, mul(sub(mouse, P0), 0.4));
-  P2.target = add(P3, mul(sub(mouse, P3), 0.4));
+/* ===================== LOOP ===================== */
+let last = performance.now();
 
-  // Spring physics
-  P1.update(0.08, 0.15);
-  P2.update(0.08, 0.15);
+function loop(now) {
+  const dt = (now - last) / 1000;
+  last = now;
 
-  draw();
-  requestAnimationFrame(update);
+  P1.update(dt);
+  P2.update(dt);
+
+  render();
+  requestAnimationFrame(loop);
 }
 
-update();
+requestAnimationFrame(loop);
 </script>
+
 </body>
 </html>
-
